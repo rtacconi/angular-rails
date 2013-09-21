@@ -1,5 +1,5 @@
 /**
- * @license AngularJS v1.2.0-rc.2
+ * @license AngularJS v1.2.0-e2068ad
  * (c) 2010-2012 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -556,13 +556,16 @@ angular.module('ngAnimate', ['ng'])
       //one day all browsers will have these properties
       var w3cAnimationProp = 'animation';
       var w3cTransitionProp = 'transition';
+      var w3cAnimationEvent = 'animationend';
+      var w3cTransitionEvent = 'transitionend';
 
       //but some still use vendor-prefixed styles
       var vendorAnimationProp = $sniffer.vendorPrefix + 'Animation';
       var vendorTransitionProp = $sniffer.vendorPrefix + 'Transition';
+      var vendorAnimationEvent = $sniffer.vendorPrefix.toLowerCase() + 'AnimationEnd';
+      var vendorTransitionEvent = $sniffer.vendorPrefix.toLowerCase() + 'TransitionEnd';
 
       var durationKey = 'Duration',
-          delayKey = 'Delay',
           propertyKey = 'Property',
           animationIterationCountKey = 'IterationCount',
           ELEMENT_NODE = 1;
@@ -591,16 +594,11 @@ angular.module('ngAnimate', ['ng'])
         element.addClass(className);
 
         //we want all the styles defined before and after
-        var duration = 0;
+        var transitionTime = 0,
+            animationTime = 0;
         forEach(element, function(element) {
           if (element.nodeType == ELEMENT_NODE) {
             var elementStyles = $window.getComputedStyle(element) || {};
-
-            var transitionDelay     = Math.max(parseMaxTime(elementStyles[w3cTransitionProp     + delayKey]),
-                                               parseMaxTime(elementStyles[vendorTransitionProp  + delayKey]));
-
-            var animationDelay      = Math.max(parseMaxTime(elementStyles[w3cAnimationProp      + delayKey]),
-                                               parseMaxTime(elementStyles[vendorAnimationProp   + delayKey]));
 
             var transitionDuration  = Math.max(parseMaxTime(elementStyles[w3cTransitionProp     + durationKey]),
                                                parseMaxTime(elementStyles[vendorTransitionProp  + durationKey]));
@@ -614,16 +612,16 @@ angular.module('ngAnimate', ['ng'])
                                            1);
             }
 
-            duration = Math.max(animationDelay  + animationDuration,
-                                transitionDelay + transitionDuration,
-                                duration);
+            transitionTime = Math.max(transitionDuration, transitionTime);
+            animationTime = Math.max(animationDuration, animationTime);
           }
         });
 
         /* there is no point in performing a reflow if the animation
            timeout is empty (this would cause a flicker bug normally
            in the page */
-        if(duration > 0) {
+        var totalTime = Math.max(transitionTime,animationTime);
+        if(totalTime > 0) {
           var node = element[0];
 
           //temporarily disable the transition so that the enter styles
@@ -642,12 +640,15 @@ angular.module('ngAnimate', ['ng'])
           node.style[vendorTransitionProp + propertyKey] = '';
           element.addClass(activeClassName);
 
-          $timeout(done, duration * 1000, false);
+          var css3AnimationEvents = [w3cAnimationEvent,  vendorAnimationEvent,
+                                     w3cTransitionEvent, vendorTransitionEvent].join(' ');
+          element.on(css3AnimationEvents, onAnimationProgress);
 
           //this will automatically be called by $animate so
           //there is no need to attach this internally to the
           //timeout done method
           return function onEnd(cancelled) {
+            element.off(css3AnimationEvents, onAnimationProgress);
             element.removeClass(className);
             element.removeClass(activeClassName);
 
@@ -662,6 +663,10 @@ angular.module('ngAnimate', ['ng'])
         else {
           element.removeClass(className);
           done();
+        }
+
+        function onAnimationProgress(event) {
+          (event.elapsedTime || (event.originalEvent && event.originalEvent.elapsedTime)) >= totalTime && done();
         }
 
         function parseMaxTime(str) {
